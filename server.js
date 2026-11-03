@@ -49,20 +49,30 @@ app.post("/api/lesson", async (req, res) => {
     }
     if (!topic && parts.length === 1) return res.status(400).json({ error: "Mavzu yozing yoki rasm yuboring." });
 
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.7 },
+    });
+    const models = [MODEL, process.env.GEMINI_FALLBACK_MODEL].filter(Boolean);
+    let data, r;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const model = models[attempt % models.length];
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: "user", parts }],
-          generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.7 },
-        }),
-      }
-    );
-    const data = await r.json();
-    if (!r.ok) throw new Error(data?.error?.message || "Gemini xatosi");
+        body,
+      });
+      data = await r.json();
+      if (r.ok) break;
+      if (![429, 500, 503].includes(r.status)) break;
+      await new Promise(ok => setTimeout(ok, 1500 * (attempt + 1)));
+    }
+    if (!r.ok) {
+      if ([429, 503].includes(r.status))
+        return res.status(503).json({ error: "Hozir band, juda koʻp soʻrov bor. Bir daqiqadan keyin qayta urinib koʻring." });
+      throw new Error(data?.error?.message || "Gemini xatosi");
+    }
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     res.json(JSON.parse(text));
   } catch (e) {
