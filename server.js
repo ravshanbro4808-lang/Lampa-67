@@ -67,7 +67,7 @@ app.post("/api/lesson", async (req, res) => {
     res.json(JSON.parse(text));
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: "Dars yaratib boʻlmadi. Qayta urinib koʻring." });
+    res.status(500).json({ error: "Dars yaratib boʻlmadi: " + String(e.message).slice(0, 300) });
   }
 });
 
