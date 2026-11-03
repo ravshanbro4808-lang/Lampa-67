@@ -67,12 +67,18 @@ app.post("/api/lesson", async (req, res) => {
     let data, r;
     for (let attempt = 0; attempt < 4; attempt++) {
       const model = models[attempt % models.length];
-      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
-        body,
-      });
-      data = await r.json();
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+          body,
+          signal: AbortSignal.timeout(30000),
+        });
+        data = await r.json();
+      } catch (err) {
+        r = { ok: false, status: 503 };
+        data = { error: { message: "Javob kechikdi (" + model + ")" } };
+      }
       if (r.ok) break;
       if (![429, 500, 503].includes(r.status)) break;
       await new Promise(ok => setTimeout(ok, 1500 * (attempt + 1)));
