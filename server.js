@@ -35,6 +35,15 @@ const SCHEMA = {
   required: ["title", "steps", "check"],
 };
 
+app.get("/api/models", async (req, res) => {
+  try {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": KEY } });
+    const d = await r.json();
+    if (!r.ok) return res.status(500).json({ error: d?.error?.message });
+    res.json((d.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent")).map(m => m.name.replace("models/", "")));
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
 app.post("/api/lesson", async (req, res) => {
   try {
     if (!KEY) return res.status(500).json({ error: "GEMINI_API_KEY oʻrnatilmagan." });
