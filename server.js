@@ -70,7 +70,7 @@ app.post("/api/lesson", async (req, res) => {
     }
     if (!r.ok) {
       if ([429, 503].includes(r.status))
-        return res.status(503).json({ error: "Hozir band, juda koʻp soʻrov bor. Bir daqiqadan keyin qayta urinib koʻring." });
+        return res.status(503).json({ error: "Hozir band, juda koʻp soʻrov bor. Bir daqiqadan keyin qayta urinib koʻring. (" + r.status + ": " + String(data?.error?.message || "").slice(0, 200) + ")" });
       throw new Error(data?.error?.message || "Gemini xatosi");
     }
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
