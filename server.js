@@ -63,16 +63,17 @@ app.post("/api/lesson", async (req, res) => {
       contents: [{ role: "user", parts }],
       generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.7 },
     });
-    const models = [MODEL, process.env.GEMINI_FALLBACK_MODEL].filter(Boolean);
+    const models = (process.env.GEMINI_MODELS || [MODEL, process.env.GEMINI_FALLBACK_MODEL].filter(Boolean).join(","))
+      .split(",").map(x => x.trim()).filter(Boolean);
     let data, r;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < Math.min(6, Math.max(4, models.length * 2)); attempt++) {
       const model = models[attempt % models.length];
       try {
         r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
           body,
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(25000),
         });
         data = await r.json();
       } catch (err) {
