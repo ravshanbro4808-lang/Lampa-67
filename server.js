@@ -1,0 +1,74 @@
+import express from "express";
+
+const KEY = process.env.GEMINI_API_KEY;
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const app = express();
+app.use(express.json({ limit: "25mb" }));
+app.use(express.static("public"));
+
+const SYSTEM = `Sen sabrli va quvnoq shaxsiy ustozsan. Foydalanuvchi mavzu yozadi yoki masala/kitob sahifasining rasmini yuboradi.
+Mavzuni 5-7 qadamda, oddiy oʻzbek tilida (lotin yozuvi) tushuntir. Har qadamda:
+- say: ovoz chiqarib aytiladigan 1-2 qisqa gap;
+- write: doskaga yoziladigan juda qisqa yozuv (3-8 soʻz yoki formula);
+- shape: none, circle, arrow, box yoki underline (yozuvni taʼkidlash uchun).
+Eng oddiy gapdan boshla, hayotiy misol keltir. Rasmda masala boʻlsa, yechimni qadamma-qadam ber.
+Oxirida check: tushunganini tekshiradigan bitta savol.`;
+
+const SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    steps: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          say: { type: "STRING" },
+          write: { type: "STRING" },
+          shape: { type: "STRING", enum: ["none", "circle", "arrow", "box", "underline"] },
+        },
+        required: ["say", "write", "shape"],
+      },
+    },
+    check: { type: "STRING" },
+  },
+  required: ["title", "steps", "check"],
+};
+
+app.post("/api/lesson", async (req, res) => {
+  try {
+    if (!KEY) return res.status(500).json({ error: "GEMINI_API_KEY oʻrnatilmagan." });
+    const topic = String(req.body.topic || "").slice(0, 1000);
+    const images = Array.isArray(req.body.images) ? req.body.images.slice(0, 100) : [];
+    if (images.reduce((a, x) => a + String(x).length, 0) > 19e6)
+      return res.status(413).json({ error: "Rasmlar juda koʻp yoki katta. Bir qismini olib tashlab, qayta yuboring." });
+    const parts = [{ text: topic || "Rasmlardagi mavzuni tushuntir. Bir nechta rasm boʻlsa, hammasini bitta dars qilib birlashtir." }];
+    for (const img of images) {
+      const m = String(img).match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+      if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    }
+    if (!topic && parts.length === 1) return res.status(400).json({ error: "Mavzu yozing yoki rasm yuboring." });
+
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: "user", parts }],
+          generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.7 },
+        }),
+      }
+    );
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error?.message || "Gemini xatosi");
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    res.json(JSON.parse(text));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Dars yaratib boʻlmadi. Qayta urinib koʻring." });
+  }
+});
+
+app.listen(process.env.PORT || 3000, () => console.log("Lampa ishga tushdi"));
