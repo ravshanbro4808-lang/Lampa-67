@@ -129,7 +129,15 @@ async function tts(text, model, voice) {
   if (!r.ok) throw new Error(d?.error?.message || "TTS xatosi");
   const a = (d.steps || []).flatMap(s => s.content || []).filter(c => c.type === "audio").pop();
   if (!a?.data) throw new Error("Audio kelmadi");
-  return { audio: a.data, mime: a.mime_type || "audio/wav" };
+  let mime = a.mime_type || "audio/wav", data = a.data;
+  if (/L16|pcm/i.test(mime)) {   // xom PCM boʻlsa, WAV qilib oʻraymiz
+    const rate = +(mime.match(/rate=(\d+)/)?.[1] || 24000), pcm = Buffer.from(data, "base64"), h = Buffer.alloc(44);
+    h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4); h.write("WAVEfmt ", 8); h.writeUInt32LE(16, 16);
+    h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28);
+    h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+    data = Buffer.concat([h, pcm]).toString("base64"); mime = "audio/wav";
+  }
+  return { audio: data, mime };
 }
 const ttsCache = new Map();
 app.post("/api/tts", async (req, res) => {
